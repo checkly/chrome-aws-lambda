@@ -4,6 +4,7 @@ import { access, createWriteStream, existsSync, mkdirSync, readdirSync, symlink,
 import { IncomingMessage } from 'http';
 import LambdaFS from 'lambdafs';
 import { join } from 'path';
+import fs from 'fs'
 import { PuppeteerNode, Viewport } from 'puppeteer-core';
 import { URL } from 'url';
 
@@ -15,7 +16,7 @@ if (/^AWS_Lambda_nodejs(?:10|12|14)[.]x$/.test(process.env.AWS_EXECUTION_ENV) ==
   if (process.env.LD_LIBRARY_PATH === undefined) {
     process.env.LD_LIBRARY_PATH = '/tmp/aws/lib';
   } else if (process.env.LD_LIBRARY_PATH.startsWith('/tmp/aws/lib') !== true) {
-    process.env.LD_LIBRARY_PATH = [...new Set(['/tmp/aws/lib', '/tmp/swiftshader', ...process.env.LD_LIBRARY_PATH.split(':')])].join(':');
+    process.env.LD_LIBRARY_PATH = [...new Set(['/tmp/aws/lib', ...process.env.LD_LIBRARY_PATH.split(':')])].join(':');
   }
 }
 
@@ -163,6 +164,8 @@ class Chromium {
     const promises = [
       LambdaFS.inflate(`${input}/chromium.br`),
       LambdaFS.inflate(`${input}/swiftshader.tar.br`),
+      fs.promises.rename('/tmp/swiftshader/libEGL.so', '/tmp/libEGL.so').then(() => '/tmp/libEGL.so'),
+      fs.promises.rename('/tmp/swiftshader/libGLESv2.so', '/tmp/libGLESv2.so').then(() => '/tmp/libGLESv2.so')
     ];
 
     if (/^AWS_Lambda_nodejs(?:10|12|14)[.]x$/.test(process.env.AWS_EXECUTION_ENV) === true) {
