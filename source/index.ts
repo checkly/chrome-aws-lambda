@@ -15,7 +15,7 @@ if (/^AWS_Lambda_nodejs(?:10|12|14)[.]x$/.test(process.env.AWS_EXECUTION_ENV) ==
   if (process.env.LD_LIBRARY_PATH === undefined) {
     process.env.LD_LIBRARY_PATH = '/tmp/aws/lib';
   } else if (process.env.LD_LIBRARY_PATH.startsWith('/tmp/aws/lib') !== true) {
-    process.env.LD_LIBRARY_PATH = [...new Set(['/tmp/aws/lib', ...process.env.LD_LIBRARY_PATH.split(':')])].join(':');
+    process.env.LD_LIBRARY_PATH = [...new Set(['/tmp/aws/lib', '/tmp/swiftshader', ...process.env.LD_LIBRARY_PATH.split(':')])].join(':');
   }
 }
 
