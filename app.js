@@ -5,7 +5,7 @@ async function runTest(args) {
   const { config, chromium: chrome } = await chromium.prepare(`/tmp/random`)
 
   const FONTCONFIG_PATH = config.fontConfigPath
-  const LD_LIBRARY_PATH = [...new Set([config.awsLibrarPath, ...process.env.LD_LIBRARY_PATH.split(':')])].join(':')
+  const LD_LIBRARY_PATH = [...new Set([config.ldLibraryPath, ...process.env.LD_LIBRARY_PATH.split(':')])].join(':')
 
   const options = {
     headless: true, // Always true

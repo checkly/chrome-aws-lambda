@@ -85,7 +85,7 @@ class Chromium {
     return {
       config: {
         fontConfigPath: join(folder, 'aws'),
-        awsLibrarPath: join(folder, 'aws', 'lib'),
+        ldLibraryPath: join(folder, 'aws', 'lib'),
       },
       chromium: {
         path: chromiumExpectedPath
