@@ -4,7 +4,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 
-async function fileExists(filepath: string) {
+async function fileExists(filepath) {
     try {
       await fs.promises.access(filepath, fs.constants.F_OK)
       return true
@@ -17,7 +17,7 @@ async function fileExists(filepath: string) {
      *
      * @param file Path of the file to decompress.
      */
-async function inflate(folder: string, file: string) {
+async function inflate(folder, file) {
     const output = path.join(folder, path.basename(file).replace(/[.](?:t(?:ar(?:[.](?:br|gz))?|br|gz)|br|gz)$/i, ''));
     if (await fileExists(output)) {
         return output;
@@ -52,7 +52,7 @@ async function inflate(folder: string, file: string) {
     });
 }
 
-function fontConfig(awsFolder: string) {
+function fontConfig(awsFolder) {
     return `<?xml version="1.0"?>
     <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
     <fontconfig>
