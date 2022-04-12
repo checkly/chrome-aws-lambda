@@ -1,7 +1,7 @@
 {
   "name": "@checkly/chrome-aws-lambda",
   "private": false,
-  "version": "5.0.0-4",
+  "version": "5.0.0-5",
   "author": {
     "name": "Alix Axel"
   },
