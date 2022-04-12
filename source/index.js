@@ -1,68 +1,8 @@
-const { createWriteStream, existsSync, mkdirSync, readdirSync, unlinkSync } = require('fs');
-const { get } = require('https');
-const { inflate } = require('lambdafs');
+const { promises: fs } = require('fs');
 const { join } = require('path');
-const { URL } = require('url');
-
-if (['AWS_Lambda_nodejs10.x', 'AWS_Lambda_nodejs12.x'].includes(process.env.AWS_EXECUTION_ENV) === true) {
-  if (process.env.FONTCONFIG_PATH === undefined) {
-    process.env.FONTCONFIG_PATH = '/tmp/aws';
-  }
-
-  if (process.env.LD_LIBRARY_PATH.startsWith('/tmp/aws/lib') !== true) {
-    process.env.LD_LIBRARY_PATH = [...new Set(['/tmp/aws/lib', ...process.env.LD_LIBRARY_PATH.split(':')])].join(':');
-  }
-}
+const { inflate, fileExists, fontConfig } = require('./util');
 
 class Chromium {
-  /**
-   * Downloads a custom font and returns its basename, patching the environment so that Chromium can find it.
-   * If not running on AWS Lambda nor Google Cloud Functions, `null` is returned instead.
-   */
-  static async font(input) {
-    if (this.headless !== true) {
-      return null;
-    }
-
-    if (process.env.HOME === undefined) {
-      process.env.HOME = '/tmp';
-    }
-
-    if (existsSync(`${process.env.HOME}/.fonts`) !== true) {
-      mkdirSync(`${process.env.HOME}/.fonts`);
-    }
-
-    return new Promise((resolve, reject) => {
-      const url = new URL(input);
-      const output = `${process.env.HOME}/.fonts/${url.pathname.split('/').pop()}`;
-
-      if (existsSync(output) === true) {
-        return resolve(output);
-      }
-
-      get(input, (response) => {
-        if (response.statusCode !== 200) {
-          return reject(`Unexpected status code: ${response.statusCode}.`);
-        }
-
-        const stream = createWriteStream(output);
-
-        stream.once('error', (error) => {
-          return reject(error);
-        });
-
-        response.on('data', (chunk) => {
-          stream.write(chunk);
-        });
-
-        response.once('end', () => {
-          stream.end(() => {
-            return resolve(url.pathname.split('/').pop());
-          });
-        });
-      });
-    });
-  }
 
   /**
    * Returns a list of recommended additional Chromium flags.
@@ -140,36 +80,34 @@ class Chromium {
     };
   }
 
-  /**
-   * Inflates the current version of Chromium and returns the path to the binary.
-   * If not running on AWS Lambda nor Google Cloud Functions, `null` is returned instead.
-   */
-  static get executablePath() {
-    if (this.headless !== true) {
-      return Promise.resolve(null);
-    }
-
-    if (existsSync('/tmp/chromium') === true) {
-      for (const file of readdirSync('/tmp')) {
+  static async prepare() {
+    await fs.mkdir(folder, { recursive: true, mode: 0o777 })
+    const chromiumExpectedPath = join(folder, 'chromium')
+    if (await fileExists(chromiumExpectedPath)) {
+      const files = await fs.readdir(folder)
+      for (const file of files) {
         if (file.startsWith('core.chromium') === true) {
-          unlinkSync(`/tmp/${file}`);
+          await fs.unlink(join(folder, file));
         }
       }
+    } else {
+      const input = join(__dirname, '..', 'bin');
+      const promises = [
+        inflate(folder, `${input}/chromium.br`),
+        inflate(folder, `${input}/swiftshader.tar.br`),
+        inflate(folder, `${input}/aws.tar.br`),
+      ];
 
-      return Promise.resolve('/tmp/chromium');
+      const awsFolder = join(folder, 'aws')
+
+      await Promise.all(promises);
+      await fs.writeFile(join(awsFolder, 'fonts.conf'), fontConfig(awsFolder), { encoding: 'utf8', mode: 0o700})
     }
-
-    const input = join(__dirname, '..', 'bin');
-    const promises = [
-      inflate(`${input}/chromium.br`),
-      inflate(`${input}/swiftshader.tar.br`),
-    ];
-
-    if (['AWS_Lambda_nodejs10.x', 'AWS_Lambda_nodejs12.x'].includes(process.env.AWS_EXECUTION_ENV) === true) {
-      promises.push(inflate(`${input}/aws.tar.br`));
+    return {
+      fontConfigPath: join(folder, 'aws'),
+      ldLibraryPath: join(folder, 'aws', 'lib'),
+      chromiumPath: chromiumExpectedPath,
     }
-
-    return Promise.all(promises).then((result) => result.shift());
   }
 
   /**
