@@ -70,7 +70,7 @@ class Chromium {
     };
   }
 
-  static async prepare() {
+  static async prepare(folder) {
     await fs.mkdir(folder, { recursive: true, mode: 0o777 })
     const chromiumExpectedPath = join(folder, 'chromium')
     if (await fileExists(chromiumExpectedPath)) {
