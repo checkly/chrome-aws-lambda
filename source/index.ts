@@ -4,7 +4,6 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { PuppeteerNode, Viewport } from 'puppeteer-core';
 import { inflate, fileExists, fontConfig } from './util';
-import * as path from "path";
 
 class Chromium {
   /**
@@ -84,7 +83,7 @@ class Chromium {
           folder,
           file: `${input}/swiftshader.tar.br`,
           targetFolder: folder,
-          checkFileToExists: path.join(folder, 'libGLESv2.so')
+          checkFileToExists: `${folder}/libGLESv2.so`
         }),
         inflate({
           folder,
