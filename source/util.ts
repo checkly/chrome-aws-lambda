@@ -3,6 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 
+interface IInflateProps {
+  folder: string,
+  file: string,
+  targetFolder?: string,
+  checkFileToExists?:string
+}
+
 
 export async function fileExists(filepath: string) {
     try {
@@ -12,26 +19,14 @@ export async function fileExists(filepath: string) {
       return false
     }
   }
-    /**
-     * Decompresses a (tarballed) Brotli or Gzip compressed file and returns the path to the decompressed file/folder.
-     *
-     * @param {string} folder
-     * @param {string} file Path of the file to decompress.
-     */
- export async function inflate(folder: string, file: string) {
-    // Swiftshader need to be extracted at the same level as chromium and not inside a swiftshader director
-    // https://github.com/alixaxel/chrome-aws-lambda/pull/264#issuecomment-1136311984
-    const isSwiftshader = file.includes('swiftshader')
 
-    const output = isSwiftshader ?
-        folder :
-        path.join(folder, path.basename(file).replace(/[.](?:t(?:ar(?:[.](?:br|gz))?|br|gz)|br|gz)$/i, ''));
+/**
+ * Decompresses a (tarballed) Brotli or Gzip compressed file and returns the path to the decompressed file/folder.
+ */
+export async function inflate({ folder, file, targetFolder, checkFileToExists }: IInflateProps) {
+    const output = targetFolder ?? path.join(folder, path.basename(file).replace(/[.](?:t(?:ar(?:[.](?:br|gz))?|br|gz)|br|gz)$/i, ''));
 
-    if (isSwiftshader) {
-      if(await fileExists(path.join(output, 'libGLESv2.so'))) {
-        return output;
-      }
-    } else if (await fileExists(output)) {
+    if (await fileExists(checkFileToExists ?? output)) {
       return output;
     }
 
