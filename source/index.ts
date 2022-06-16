@@ -95,7 +95,7 @@ class Chromium {
    * False is returned if Serverless environment variables `IS_LOCAL` or `IS_OFFLINE` are set.
    */
   static get headless() {
-    if (process.env.IS_LOCAL !== undefined || process.env.IS_OFFLINE !== undefined) {
+    if (!process.env.DISABLE_HEADLESS && (process.env.IS_LOCAL !== undefined || process.env.IS_OFFLINE !== undefined)) {
       return false;
     }
 
