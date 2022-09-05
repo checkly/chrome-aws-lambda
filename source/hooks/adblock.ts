@@ -6,7 +6,7 @@ let adblocker: any = null;
 
 /**
  * Enables ad blocking in page.
- * Requires `@cliqz/adblocker-puppeteer` package.
+ * Requires `@cliqz/adblocker-puppeteer` package to be installed.
  *
  * @param page - Page to hook to.
  */

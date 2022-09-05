@@ -1,11 +1,92 @@
 /// <reference path="../typings/chrome-aws-lambda.d.ts" />
 
-import { promises as fs } from 'fs';
+import { access, createWriteStream, existsSync, mkdirSync, readdirSync, symlink, unlinkSync } from 'fs';
+import { IncomingMessage } from 'http';
+import LambdaFS from './lambdafs';
 import { join } from 'path';
 import { PuppeteerNode, Viewport } from 'puppeteer-core';
-import { inflate, fileExists, fontConfig } from './util';
+import { URL } from 'url';
+
+if (/^AWS_Lambda_nodejs(?:10|12|14|16)[.]x$/.test(process.env.AWS_EXECUTION_ENV) === true) {
+  if (process.env.FONTCONFIG_PATH === undefined) {
+    process.env.FONTCONFIG_PATH = '/tmp/aws';
+  }
+
+  if (process.env.LD_LIBRARY_PATH === undefined) {
+    process.env.LD_LIBRARY_PATH = '/tmp/aws/lib';
+  } else if (process.env.LD_LIBRARY_PATH.startsWith('/tmp/aws/lib') !== true) {
+    process.env.LD_LIBRARY_PATH = [...new Set(['/tmp/aws/lib', ...process.env.LD_LIBRARY_PATH.split(':')])].join(':');
+  }
+}
 
 class Chromium {
+  /**
+   * Downloads or symlinks a custom font and returns its basename, patching the environment so that Chromium can find it.
+   * If not running on AWS Lambda nor Google Cloud Functions, `null` is returned instead.
+   */
+  static font(input: string): Promise<string> {
+    if (Chromium.headless !== true) {
+      return null;
+    }
+
+    if (process.env.HOME === undefined) {
+      process.env.HOME = '/tmp';
+    }
+
+    if (existsSync(`${process.env.HOME}/.fonts`) !== true) {
+      mkdirSync(`${process.env.HOME}/.fonts`);
+    }
+
+    return new Promise((resolve, reject) => {
+      if (/^https?:[/][/]/i.test(input) !== true) {
+        input = `file://${input}`;
+      }
+
+      const url = new URL(input);
+      const output = `${process.env.HOME}/.fonts/${url.pathname.split('/').pop()}`;
+
+      if (existsSync(output) === true) {
+        return resolve(output.split('/').pop());
+      }
+
+      if (url.protocol === 'file:') {
+        access(url.pathname, (error) => {
+          if (error != null) {
+            return reject(error);
+          }
+
+          symlink(url.pathname, output, (error) => {
+            return error != null ? reject(error) : resolve(url.pathname.split('/').pop());
+          });
+        });
+      } else {
+        let handler = url.protocol === 'http:' ? require('http').get : require('https').get;
+
+        handler(input, (response: IncomingMessage) => {
+          if (response.statusCode !== 200) {
+            return reject(`Unexpected status code: ${response.statusCode}.`);
+          }
+
+          const stream = createWriteStream(output);
+
+          stream.once('error', (error) => {
+            return reject(error);
+          });
+
+          response.on('data', (chunk) => {
+            stream.write(chunk);
+          });
+
+          response.once('end', () => {
+            stream.end(() => {
+              return resolve(url.pathname.split('/').pop());
+            });
+          });
+        });
+      }
+    });
+  }
+
   /**
    * Returns a list of additional Chromium flags recommended for serverless environments.
    * The canonical list of flags can be found on https://peter.sh/experiments/chromium-command-line-switches/.
@@ -14,10 +95,13 @@ class Chromium {
     const result = [
       '--allow-running-insecure-content', // https://source.chromium.org/search?q=lang:cpp+symbol:kAllowRunningInsecureContent&ss=chromium
       '--autoplay-policy=user-gesture-required', // https://source.chromium.org/search?q=lang:cpp+symbol:kAutoplayPolicy&ss=chromium
+      '--disable-background-timer-throttling',
       '--disable-component-update', // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableComponentUpdate&ss=chromium
       '--disable-domain-reliability', // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableDomainReliability&ss=chromium
       '--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process', // https://source.chromium.org/search?q=file:content_features.cc&ss=chromium
+      '--disable-ipc-flooding-protection',
       '--disable-print-preview', // https://source.chromium.org/search?q=lang:cpp+symbol:kDisablePrintPreview&ss=chromium
+      '--disable-dev-shm-usage',
       '--disable-setuid-sandbox', // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSetuidSandbox&ss=chromium
       '--disable-site-isolation-trials', // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSiteIsolation&ss=chromium
       '--disable-speech-api', // https://source.chromium.org/search?q=lang:cpp+symbol:kDisableSpeechAPI&ss=chromium
@@ -29,6 +113,7 @@ class Chromium {
       '--in-process-gpu', // https://source.chromium.org/search?q=lang:cpp+symbol:kInProcessGPU&ss=chromium
       '--mute-audio', // https://source.chromium.org/search?q=lang:cpp+symbol:kMuteAudio&ss=chromium
       '--no-default-browser-check', // https://source.chromium.org/search?q=lang:cpp+symbol:kNoDefaultBrowserCheck&ss=chromium
+      '--no-first-run',
       '--no-pings', // https://source.chromium.org/search?q=lang:cpp+symbol:kNoPings&ss=chromium
       '--no-sandbox', // https://source.chromium.org/search?q=lang:cpp+symbol:kNoSandbox&ss=chromium
       '--no-zygote', // https://source.chromium.org/search?q=lang:cpp+symbol:kNoZygote&ss=chromium
@@ -60,34 +145,36 @@ class Chromium {
     };
   }
 
-  static async prepare(folder: string) {
-    await fs.mkdir(folder, { recursive: true, mode: 0o777 })
-    const chromiumExpectedPath = join(folder, 'chromium')
-    if (await fileExists(chromiumExpectedPath)) {
-      const files = await fs.readdir(folder)
-      for (const file of files) {
+  /**
+   * Inflates the current version of Chromium and returns the path to the binary.
+   * If not running on AWS Lambda nor Google Cloud Functions, `null` is returned instead.
+   */
+  static get executablePath(): Promise<string> {
+    if (Chromium.headless !== true) {
+      return Promise.resolve(null);
+    }
+
+    if (existsSync('/tmp/chromium') === true) {
+      for (const file of readdirSync('/tmp')) {
         if (file.startsWith('core.chromium') === true) {
-          await fs.unlink(join(folder, file));
+          unlinkSync(`/tmp/${file}`);
         }
       }
-    } else {
-      const input = join(__dirname, '..', 'bin');
-      const promises = [
-        inflate(folder, `${input}/chromium.br`),
-        inflate(folder, `${input}/swiftshader.tar.br`),
-        inflate(folder, `${input}/aws.tar.br`),
-      ];
 
-      const awsFolder = join(folder, 'aws')
+      return Promise.resolve('/tmp/chromium');
+    }
 
-      await Promise.all(promises);
-      await fs.writeFile(join(awsFolder, 'fonts.conf'), fontConfig(awsFolder), { encoding: 'utf8', mode: 0o700})
+    const input = join(__dirname, '..', 'bin');
+    const promises = [
+      LambdaFS.inflate(`${input}/chromium.br`),
+      LambdaFS.inflate(`${input}/swiftshader.tar.br`),
+    ];
+
+    if (/^AWS_Lambda_nodejs(?:10|12|14|16)[.]x$/.test(process.env.AWS_EXECUTION_ENV) === true) {
+      promises.push(LambdaFS.inflate(`${input}/aws.tar.br`));
     }
-    return {
-      fontConfigPath: join(folder, 'aws'),
-      ldLibraryPath: join(folder, 'aws', 'lib'),
-      chromiumPath: chromiumExpectedPath,
-    }
+
+    return Promise.all(promises).then((result) => result.shift());
   }
 
   /**
@@ -113,7 +200,7 @@ class Chromium {
    * Overloads puppeteer with useful methods and returns the resolved package.
    */
   static get puppeteer(): PuppeteerNode {
-    for (const overload of ['Browser', 'BrowserContext', 'ElementHandle', 'FrameManager', 'Page']) {
+    for (const overload of ['Browser', 'BrowserContext', 'ElementHandle', 'Frame', 'Page']) {
       require(`${__dirname}/puppeteer/lib/${overload}`);
     }
 
