@@ -1,11 +1,12 @@
 /// <reference path="../typings/chrome-aws-lambda.d.ts" />
 
-import { access, createWriteStream, existsSync, mkdirSync, readdirSync, symlink, unlinkSync } from 'fs';
+import { access, createWriteStream, existsSync, mkdirSync, promises as fs, symlink } from 'fs';
 import { IncomingMessage } from 'http';
-import LambdaFS from './lambdafs';
 import { join } from 'path';
 import { PuppeteerNode, Viewport } from 'puppeteer-core';
 import { URL } from 'url';
+
+import { inflate, fileExists, fontConfig } from './util';
 
 if (/^AWS_Lambda_nodejs(?:10|12|14|16)[.]x$/.test(process.env.AWS_EXECUTION_ENV) === true) {
   if (process.env.FONTCONFIG_PATH === undefined) {
@@ -145,37 +146,36 @@ class Chromium {
     };
   }
 
-  /**
-   * Inflates the current version of Chromium and returns the path to the binary.
-   * If not running on AWS Lambda nor Google Cloud Functions, `null` is returned instead.
-   */
-  static get executablePath(): Promise<string> {
-    if (Chromium.headless !== true) {
-      return Promise.resolve(null);
-    }
-
-    if (existsSync('/tmp/chromium') === true) {
-      for (const file of readdirSync('/tmp')) {
+  static async prepare(folder: string) {
+    await fs.mkdir(folder, { recursive: true, mode: 0o777 })
+    const chromiumExpectedPath = join(folder, 'chromium')
+    if (await fileExists(chromiumExpectedPath)) {
+      const files = await fs.readdir(folder)
+      for (const file of files) {
         if (file.startsWith('core.chromium') === true) {
-          unlinkSync(`/tmp/${file}`);
+          await fs.unlink(join(folder, file));
         }
       }
+    } else {
+      const input = join(__dirname, '..', 'bin');
+      const promises = [
+        inflate(folder, `${input}/chromium.br`),
+        inflate(folder, `${input}/swiftshader.tar.br`),
+        inflate(folder, `${input}/aws.tar.br`),
+      ];
 
-      return Promise.resolve('/tmp/chromium');
+      const awsFolder = join(folder, 'aws')
+
+      await Promise.all(promises);
+      await fs.writeFile(join(awsFolder, 'fonts.conf'), fontConfig(awsFolder), { encoding: 'utf8', mode: 0o700})
     }
-
-    const input = join(__dirname, '..', 'bin');
-    const promises = [
-      LambdaFS.inflate(`${input}/chromium.br`),
-      LambdaFS.inflate(`${input}/swiftshader.tar.br`),
-    ];
-
-    if (/^AWS_Lambda_nodejs(?:10|12|14|16)[.]x$/.test(process.env.AWS_EXECUTION_ENV) === true) {
-      promises.push(LambdaFS.inflate(`${input}/aws.tar.br`));
+    return {
+      fontConfigPath: join(folder, 'aws'),
+      ldLibraryPath: join(folder, 'aws', 'lib'),
+      chromiumPath: chromiumExpectedPath,
     }
-
-    return Promise.all(promises).then((result) => result.shift());
   }
+
 
   /**
    * Returns a boolean indicating if we are running on AWS Lambda or Google Cloud Functions.
