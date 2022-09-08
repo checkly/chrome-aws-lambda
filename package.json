@@ -28,15 +28,15 @@
     "tar-fs": "^2.1.1"
   },
   "devDependencies": {
-    "@types/node": "^10.17.55",
+    "@types/node": "16.11.49",
     "@types/tar-fs": "^2.0.1",
     "playwright-core": "1.25.1",
-    "puppeteer-core": "17.1.1",
+    "puppeteer-core": "17.1.2",
     "rimraf": "^3.0.2",
-    "typescript": "4.3.4  "
+    "typescript": "4.6.4"
   },
   "peerDependencies": {
-    "puppeteer-core": "^10.1.0"
+    "puppeteer-core": "17.1.2"
   },
   "bugs": {
     "url": "https://github.com/checkly/chrome-aws-lambda/issues"
