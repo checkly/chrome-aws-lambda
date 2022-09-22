@@ -76,6 +76,7 @@ class Chromium {
         inflate(folder, `${input}/chromium.br`),
         inflate(folder, `${input}/swiftshader.tar.br`),
         inflate(folder, `${input}/aws.tar.br`),
+        inflate(folder, `${input}/ffmpeg.tar.gz`)
       ];
 
       const awsFolder = join(folder, 'aws')
@@ -86,6 +87,7 @@ class Chromium {
     return {
       fontConfigPath: join(folder, 'aws'),
       ldLibraryPath: join(folder, 'aws', 'lib'),
+      ffmpegBinaryPath: join(folder, 'ffmpeg'),
       chromiumPath: chromiumExpectedPath,
     }
   }
